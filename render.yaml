@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: steal-an-egg-radar
+    runtime: python
+    plan: free
+    rootDir: Dashboard
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /health
