@@ -7,17 +7,6 @@ discord_config.json
 node_modules/
 .env
 
-# Archivos de pruebas locales del prototipo Node
-server.js
-discord_listener.js
-bridge.lua
-roblox_scanner.lua
-original_fonts.css
-original_site.css
-original_site.js
-package.json
-package-lock.json
-/assets/
-/css/
-/js/
-index.html
+# Archivos temporales
+*.zip
+scratch_*

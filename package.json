@@ -1,0 +1,23 @@
+{
+  "name": "huevostoons-egg-report",
+  "version": "1.0.0",
+  "description": "HuevosToons - Tracker / Radar de Huevos en Vivo para Roblox (Clon exacto de egg.report/eggstoons)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "egg-report",
+    "huevostoons",
+    "roblox",
+    "radar",
+    "tracker"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.28.1",
+    "express": "^5.3.0"
+  }
+}
