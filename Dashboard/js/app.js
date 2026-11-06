@@ -6,32 +6,32 @@
   "use strict";
 
   const PET_IMAGES = {
-    "Godzilla": "assets/pets/pet-a63aea9a8fd02a8f.png",
-    "Royal Skywhale": "assets/pets/pet-990a34edf51675d8.png",
-    "World Burner": "assets/pets/pet-e5657e745eb4f421.png",
-    "Voidseer Pumpkin": "assets/pets/pet-d873e70deec8e8f0.png",
-    "Oni Tiger": "assets/pets/pet-4d92eb4757504486.png",
-    "Cave Dragon": "assets/pets/pet-9f87c348cdb51f2a.png",
-    "Mosasaurus": "assets/pets/pet-b8fb435707d052a5.png",
-    "ArchAngel": "assets/pets/pet-27835352f64294f7.png",
-    "Kitsune": "assets/pets/pet-4074749173069e02.png",
-    "Unicorn": "assets/pets/pet-0a0d6ab78fe8134d.png",
-    "Cosmic Lion": "assets/pets/pet-a945545a80e07d29.png",
-    "Eternal Lunar Dragon": "assets/pets/pet-cefa45011dd8fb7d.png",
-    "King Kong": "assets/pets/pet-517444276cdce5cd.png",
+    "Godzilla": "assets/pets/godzilla.png",
+    "Royal Skywhale": "assets/pets/royal_skywhale.png",
+    "World Burner": "assets/pets/world_burner.png",
+    "Voidseer Pumpkin": "assets/pets/voidseer_pumpkin.png",
+    "Oni Tiger": "assets/pets/oni_tiger.png",
+    "Cave Dragon": "assets/pets/cave_dragon.png",
+    "Mosasaurus": "assets/pets/mosasaurus.png",
+    "ArchAngel": "assets/pets/archangel.png",
+    "Kitsune": "assets/pets/kitsune.png",
+    "Unicorn": "assets/pets/unicorn.png",
+    "Cosmic Lion": "assets/pets/cosmic_lion.png",
+    "Eternal Lunar Dragon": "assets/pets/eternal_lunar_dragon.png",
+    "King Kong": "assets/pets/king_kong.png",
     "Gorilla King": "assets/pets/gorilla_king.png",
     "Pure Jellyfish": "assets/pets/pure_jellyfish.png",
     "Celestial Sunlion": "assets/pets/celestial_sunlion.webp",
     "Gargoyle": "assets/pets/gargoyle.png",
     "Aetheron": "assets/pets/aetheron.png",
-    "Pegasus": "assets/pets/pet-1d54fd87cbec120c.png",
-    "Skeleton Horse": "assets/pets/pet-b1416ed872b4ef72.png",
-    "Alien Skeleton Boss": "assets/pets/pet-5d0455e21cc9306e.png",
-    "Centaur": "assets/pets/pet-b6d572e15fb3e769.png",
-    "Cosmic Fox": "assets/pets/pet-9dc6934c534769d8.png",
-    "RazorFang": "assets/pets/pet-d26327feece88d5b.png",
-    "Shark": "assets/pets/pet-987ac1832c8b8abd.png",
-    "Stag": "assets/pets/pet-a44379889295b855.png"
+    "Pegasus": "assets/pets/pegasus.png",
+    "Skeleton Horse": "assets/pets/skeleton_horse.png",
+    "Alien Skeleton Boss": "assets/pets/alien_skeleton_boss.png",
+    "Centaur": "assets/pets/centaur.png",
+    "Cosmic Fox": "assets/pets/cosmic_fox.png",
+    "RazorFang": "assets/pets/razorfang.png",
+    "Shark": "assets/pets/shark.png",
+    "Stag": "assets/pets/stag.png"
   };
 
   function getPetImage(target) {
@@ -41,7 +41,7 @@
     if (target.thumbnail) return target.thumbnail;
 
     const norm = name.toLowerCase().replace(/\s+/g, '_');
-    return `https://eggstock.xyz/images/eggs/${norm}.png`;
+    return `assets/pets/${norm}.png`;
   }
 
   const RARITY_COLORS = {
