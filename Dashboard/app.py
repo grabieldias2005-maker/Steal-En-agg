@@ -41,6 +41,18 @@ footer{color:var(--muted);font-size:12px;margin-top:26px}.pets{margin-top:30px;b
  <div class="stat"><small>Actualización automática</small><div class="num">30s</div></div>
 </div>
 <div class="notice"><b>Sobre la detección de huevos:</b> Roblox no publica qué huevos están dentro de cada servidor. Esta sección muestra el catálogo comunitario de mascotas y su ganancia base; no confirma su presencia en un servidor.</div>
+<section class="pets" id="spawnPanel">
+<div class="toolbar"><div><h2>⏱️ Registro de apariciones y reinicios</h2><div class="meta">Evidencia comunitaria observada; no es un detector en vivo de todos los servidores.</div></div><button class="secondary" onclick="loadSpawnEvidence()">Actualizar evidencia</button></div>
+<div class="stats">
+ <div class="stat"><small>Intervalo mediano observado</small><div class="num" id="spawnMedian">—</div></div>
+ <div class="stat"><small>Intervalos registrados</small><div class="num" id="spawnSamples">—</div></div>
+ <div class="stat"><small>Estado del conteo</small><div class="num" id="spawnCountdown">Inactivo</div></div>
+</div>
+<div class="notice"><b>Importante:</b> la evidencia disponible registra un evento visual del Secret Tralaledon Egg y una serie de cinco intervalos de “All Egg Reset” en un mismo servidor, con mediana de 300 segundos. No demuestra que cada huevo aparezca cada cinco minutos ni que el horario sea universal.</div>
+<div class="toolbar"><div class="meta" id="spawnStatus">Cargando evidencia…</div><div><button id="notifyBtn" onclick="enableSpawnAlerts()">Activar notificaciones</button> <button class="secondary" onclick="startSpawnEstimate()">Iniciar estimador de 5 minutos</button></div></div>
+<div id="spawnRecords" class="meta">Cargando registros…</div>
+<p class="meta">El estimador solo avisa de una ventana aproximada (293–307 s) desde que tú lo inicias. No confirma que haya aparecido un huevo. <a href="https://github.com/terrencerun/steal-an-egg-research/blob/main/data/spawn-evidence.json" target="_blank" rel="noopener">Ver archivo original de evidencia</a> · <a href="https://stealaneggwiki.com/research/spawn-observations" target="_blank" rel="noopener">Método y observaciones</a>.</p>
+</section>
 <section class="pets"><div class="toolbar"><div><h2>🐾 Catálogo de ganancias</h2><div class="meta">Ordena mascotas por dinero generado por segundo</div></div><button class="secondary" onclick="loadPets()">Actualizar catálogo</button></div><div class="pet-tools"><input id="petSearch" placeholder="Buscar mascota, rareza o zona…" oninput="drawPets()"><select id="petSort" onchange="drawPets()"><option value="desc">Mayor ganancia primero</option><option value="asc">Menor ganancia primero</option></select><label>Mutación <select id="mutation" onchange="drawPets()"><option value="1">Normal ×1</option><option value="1.2">Silver ×1.2</option><option value="2.5">Golden ×2.5</option><option value="3.5">Rainbow ×3.5</option><option value="1.25">Bloom ×1.25</option><option value="2.75">Fractured / Scrambled ×2.75</option><option value="3">Parasite ×3</option></select></label><label>Tamaño × <input id="sizeFactor" type="number" min="0.1" max="100" step="0.1" value="1" oninput="drawPets()"></label></div><div id="petStatus" class="meta">Cargando catálogo comunitario…</div><div class="table-wrap"><table><thead><tr><th>Mascota</th><th>Rareza</th><th>Zona / huevo</th><th>Base $/s</th><th>Estimado $/s</th></tr></thead><tbody id="petRows"><tr><td colspan="5">Cargando…</td></tr></tbody></table></div><p class="meta">Estimación = ganancia base × mutación × factor de tamaño introducido. El factor de tamaño predeterminado es ×1 porque no existe una tabla pública fiable de kg a multiplicador. Valores comunitarios, no oficiales.</p><p class="meta">Fuente: <a href="https://grindmath.app/steal-an-egg/values/" target="_blank" rel="noopener">GrindMath – catálogo de ganancias</a>. <a href="https://stealaneggroblox.wiki/pets/" target="_blank" rel="noopener">Índice comunitario alternativo</a>.</p></section>
 <div class="toolbar"><b>Servidores públicos disponibles</b><div><button class="secondary" id="more" onclick="loadMore()" disabled>Cargar más</button> <button onclick="loadServers()">Actualizar</button></div></div>
 <div id="status">Conectando con Roblox…</div><div id="servers"><div class="empty">Cargando servidores…</div></div>
@@ -72,11 +84,47 @@ async function loadServers(append=false){
  finally{loading=false;$("more").disabled=!cursor;}
 }
 function loadMore(){loadServers(true)}
+let spawnTimer=null,spawnStartedAt=null,spawnAlerted=false,spawnEvidence=null;
+async function loadSpawnEvidence(){
+ const box=$("spawnRecords");$("spawnStatus").textContent="Consultando registro comunitario…";
+ try{
+  const r=await fetch("/api/spawn-evidence");const d=await r.json();if(!r.ok)throw new Error(d.error||"No disponible");
+  spawnEvidence=d;const series=(d.intervalSeries||[])[0],stats=series?.statistics||{};
+  $("spawnMedian").textContent=stats.medianSeconds?stats.medianSeconds+" s":"—";
+  $("spawnSamples").textContent=stats.completeIntervals??"—";
+  const records=(d.records||[]).map(x=>'<div class="server"><div><strong>'+x.visibleCue+'</strong><div class="meta">Zona: '+x.location+' · Observado: '+x.reviewedAt+' · '+x.confidence+'</div><div class="meta">'+x.intervalStatus+'</div></div><a href="'+x.sourceUrl+'" target="_blank" rel="noopener">Ver evidencia ↗</a></div>');
+  const intervals=(d.intervalSeries||[]).map(x=>'<div class="server"><div><strong>'+x.target+'</strong><div class="meta">'+x.context+' · '+x.statistics.completeIntervals+' intervalos: '+x.intervalSeconds.join(", ")+' s</div><div class="meta">Mediana: '+x.statistics.medianSeconds+' s · Rango: '+x.statistics.minimumSeconds+'–'+x.statistics.maximumSeconds+' s</div></div><a href="'+x.sourceUrl+'" target="_blank" rel="noopener">Ver video ↗</a></div>');
+  box.innerHTML=records.concat(intervals).join("")||"No hay registros publicados.";
+  $("spawnStatus").textContent="Fuente revisada: "+(d.reviewedAt||"sin fecha")+" · datos comunitarios, no oficiales.";
+ }catch(e){$("spawnStatus").textContent="No se pudo cargar la evidencia: "+e.message;box.textContent="Revisa el enlace del archivo de evidencia.";}
+}
+async function enableSpawnAlerts(){
+ if(!("Notification" in window)){alert("Este navegador no admite notificaciones.");return;}
+ const permission=await Notification.requestPermission();
+ $("notifyBtn").textContent=permission==="granted"?"Notificaciones activadas":"Permiso no concedido";
+ if(permission==="granted")new Notification("Steal An Egg Radar",{body:"Avisos estimados activados. Inicia el estimador para contar desde ahora."});
+}
+function startSpawnEstimate(){
+ if(spawnTimer)clearInterval(spawnTimer);
+ spawnStartedAt=Date.now();spawnAlerted=false;
+ $("spawnCountdown").textContent="05:00";
+ spawnTimer=setInterval(()=>{
+  const elapsed=(Date.now()-spawnStartedAt)/1000,remaining=Math.max(0,300-Math.floor(elapsed));
+  const mm=String(Math.floor(remaining/60)).padStart(2,"0"),ss=String(remaining%60).padStart(2,"0");
+  $("spawnCountdown").textContent=mm+":"+ss;
+  if(elapsed>=293&&!spawnAlerted){
+   spawnAlerted=true;$("spawnCountdown").textContent="Ventana estimada";
+   if("Notification" in window&&Notification.permission==="granted")new Notification("Steal An Egg: ventana estimada",{body:"Han pasado unos 293 segundos desde que iniciaste el conteo. Comprueba el juego: no es una detección confirmada."});
+   $("spawnStatus").textContent="Ventana estimada de reinicio (293–307 s). Comprueba el juego manualmente.";
+  }
+  if(elapsed>=307){clearInterval(spawnTimer);spawnTimer=null;$("spawnCountdown").textContent="Conteo finalizado";}
+ },1000);
+}
 let pets=[];
 function money(n){if(n>=1e9)return "$"+(n/1e9).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"B/s";if(n>=1e6)return "$"+(n/1e6).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"M/s";if(n>=1e3)return "$"+(n/1e3).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"K/s";return "$"+n+"/s";}
 async function loadPets(){ $("petStatus").textContent="Consultando catálogo comunitario…";try{const r=await fetch("/api/pets");const d=await r.json();if(!r.ok)throw new Error(d.error||"Catálogo no disponible");pets=d.data||[];$("petStatus").textContent=pets.length+" registros · fuente comunitaria · actualizado "+new Date(d.updated_at).toLocaleString();drawPets();}catch(e){$("petStatus").textContent="No se pudo actualizar el catálogo: "+e.message;}}
 function drawPets(){const q=($("petSearch")?.value||"").toLowerCase(),m=Number($("mutation")?.value||1),z=Math.max(.1,Number($("sizeFactor")?.value||1));const rows=pets.filter(p=>(p.name+" "+p.rarity+" "+p.source).toLowerCase().includes(q)).sort((a,b)=>$("petSort").value==="asc"?a.income-b.income:b.income-a.income);$("petRows").innerHTML=rows.map(p=>'<tr><td>'+p.name+'</td><td>'+p.rarity+'</td><td>'+p.source+'</td><td>'+money(p.income)+'</td><td>'+money(p.income*m*z)+'</td></tr>').join("")||'<tr><td colspan="5">No hay coincidencias.</td></tr>';}
-loadServers();loadPets();setInterval(()=>loadServers(false),30000);
+loadServers();loadPets();loadSpawnEvidence();setInterval(()=>loadServers(false),30000);
 </script></body></html>
 """
 
@@ -146,6 +194,18 @@ def pet_values():
         if _pet_cache["data"]:
             return jsonify({"data": _pet_cache["data"], "updated_at": datetime.fromtimestamp(_pet_cache["at"], timezone.utc).isoformat(), "source": PET_VALUES_URL, "stale": True})
         return jsonify({"error": "La fuente comunitaria no respondió o cambió su formato. Consulta el enlace de GrindMath."}), 502
+
+@app.get("/api/spawn-evidence")
+def spawn_evidence():
+    # Public community evidence ledger. This records observations, not live server telemetry.
+    url = "https://raw.githubusercontent.com/terrencerun/steal-an-egg-research/main/data/spawn-evidence.json"
+    try:
+        response = requests.get(url, headers={"User-Agent": "StealAnEggPublicServerRadar/1.0"}, timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        return jsonify(payload)
+    except (requests.RequestException, ValueError):
+        return jsonify({"error": "No se pudo consultar el archivo público de evidencia."}), 502
 
 @app.get("/health")
 def health():
