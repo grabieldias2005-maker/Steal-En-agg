@@ -3,7 +3,7 @@ import requests
 from flask import Flask, jsonify, render_template_string, request
 
 app = Flask(__name__)
-PLACE_ID = "107778070777162"
+PLACE_ID = "107778070777162"\nPET_VALUES_URL = "https://grindmath.app/steal-an-egg/values/"\n_pet_cache = {"at": 0, "data": []}
 ROBLOX_SERVERS_URL = f"https://games.roblox.com/v1/games/{PLACE_ID}/servers/Public"
 
 PAGE = r"""
@@ -26,7 +26,7 @@ button{background:var(--blue);border:0;color:white;font-weight:700;padding:10px 
 #servers{display:grid;gap:10px}.server{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .server strong{display:block;font-size:16px}.meta{color:var(--muted);font-size:13px;margin-top:5px}.join{display:inline-block;text-decoration:none;background:#1f9b74;color:#041a13;padding:10px 17px;border-radius:10px;font-weight:800}
 #status{color:var(--muted);font-size:13px}.empty{color:var(--muted);padding:24px;text-align:center;border:1px dashed var(--line);border-radius:14px}
-footer{color:var(--muted);font-size:12px;margin-top:26px}
+footer{color:var(--muted);font-size:12px;margin-top:26px}.pets{margin-top:30px;background:linear-gradient(145deg,#121f3a,#0c1528);border:1px solid var(--line);border-radius:16px;padding:18px}.pets h2{margin:0 0 5px}.pet-tools{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.pet-tools input,.pet-tools select{background:#081326;color:#f4f7ff;border:1px solid var(--line);border-radius:8px;padding:9px;max-width:180px}.pet-tools input#petSearch{max-width:280px;flex:1}.pet-tools label{font-size:12px;color:var(--muted)}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:650px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}td:last-child{color:var(--green);font-weight:800}.pets a{color:#8db7ff}
 </style>
 </head>
 <body><main>
@@ -36,7 +36,8 @@ footer{color:var(--muted);font-size:12px;margin-top:26px}
  <div class="stat"><small>Jugadores visibles</small><div class="num" id="players">—</div></div>
  <div class="stat"><small>Actualización automática</small><div class="num">30s</div></div>
 </div>
-<div class="notice"><b>Sobre la detección de huevos:</b> Roblox no publica los huevos que hay dentro de cada servidor en su lista pública. Esta página muestra servidores y permite intentar entrar; para mostrar huevos reales hace falta una fuente de datos autorizada del juego.</div>
+<div class="notice"><b>Sobre la detección de huevos:</b> Roblox no publica qué huevos están dentro de cada servidor. Esta sección muestra el catálogo comunitario de mascotas y su ganancia base; no confirma su presencia en un servidor.</div>
+<section class="pets"><div class="toolbar"><div><h2>🐾 Catálogo de ganancias</h2><div class="meta">Ordena mascotas por dinero generado por segundo</div></div><button class="secondary" onclick="loadPets()">Actualizar catálogo</button></div><div class="pet-tools"><input id="petSearch" placeholder="Buscar mascota, rareza o zona…" oninput="drawPets()"><select id="petSort" onchange="drawPets()"><option value="desc">Mayor ganancia primero</option><option value="asc">Menor ganancia primero</option></select><label>Mutación <select id="mutation" onchange="drawPets()"><option value="1">Normal ×1</option><option value="1.2">Silver ×1.2</option><option value="2.5">Golden ×2.5</option><option value="3.5">Rainbow ×3.5</option><option value="1.25">Bloom ×1.25</option><option value="2.75">Fractured / Scrambled ×2.75</option><option value="3">Parasite ×3</option></select></label><label>Tamaño × <input id="sizeFactor" type="number" min="0.1" max="100" step="0.1" value="1" oninput="drawPets()"></label></div><div id="petStatus" class="meta">Cargando catálogo comunitario…</div><div class="table-wrap"><table><thead><tr><th>Mascota</th><th>Rareza</th><th>Zona / huevo</th><th>Base $/s</th><th>Estimado $/s</th></tr></thead><tbody id="petRows"><tr><td colspan="5">Cargando…</td></tr></tbody></table></div><p class="meta">Estimación = ganancia base × mutación × factor de tamaño introducido. El factor de tamaño predeterminado es ×1 porque no existe una tabla pública fiable de kg a multiplicador. Valores comunitarios, no oficiales.</p><p class="meta">Fuente: <a href="https://grindmath.app/steal-an-egg/values/" target="_blank" rel="noopener">GrindMath – catálogo de ganancias</a>. <a href="https://stealaneggroblox.wiki/pets/" target="_blank" rel="noopener">Índice comunitario alternativo</a>.</p></section>
 <div class="toolbar"><b>Servidores públicos disponibles</b><div><button class="secondary" id="more" onclick="loadMore()" disabled>Cargar más</button> <button onclick="loadServers()">Actualizar</button></div></div>
 <div id="status">Conectando con Roblox…</div><div id="servers"><div class="empty">Cargando servidores…</div></div>
 <footer>Los servidores pueden llenarse o cerrarse antes de entrar. JOIN abre el cliente/página oficial de Roblox. No se accede a servidores privados ni a datos ocultos.</footer>
@@ -67,7 +68,11 @@ async function loadServers(append=false){
  finally{loading=false;$("more").disabled=!cursor;}
 }
 function loadMore(){loadServers(true)}
-loadServers();setInterval(()=>loadServers(false),30000);
+let pets=[];
+function money(n){if(n>=1e9)return "$"+(n/1e9).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"B/s";if(n>=1e6)return "$"+(n/1e6).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"M/s";if(n>=1e3)return "$"+(n/1e3).toFixed(2).replace(/0+$/,"").replace(/\\.$/,"")+"K/s";return "$"+n+"/s";}
+async function loadPets(){ $("petStatus").textContent="Consultando catálogo comunitario…";try{const r=await fetch("/api/pets");const d=await r.json();if(!r.ok)throw new Error(d.error||"Catálogo no disponible");pets=d.data||[];$("petStatus").textContent=pets.length+" registros · fuente comunitaria · actualizado "+new Date(d.updated_at).toLocaleString();drawPets();}catch(e){$("petStatus").textContent="No se pudo actualizar el catálogo: "+e.message;}}
+function drawPets(){const q=($("petSearch")?.value||"").toLowerCase(),m=Number($("mutation")?.value||1),z=Math.max(.1,Number($("sizeFactor")?.value||1));const rows=pets.filter(p=>(p.name+" "+p.rarity+" "+p.source).toLowerCase().includes(q)).sort((a,b)=>$("petSort").value==="asc"?a.income-b.income:b.income-a.income);$("petRows").innerHTML=rows.map(p=>'<tr><td>'+p.name+'</td><td>'+p.rarity+'</td><td>'+p.source+'</td><td>'+money(p.income)+'</td><td>'+money(p.income*m*z)+'</td></tr>').join("")||'<tr><td colspan="5">No hay coincidencias.</td></tr>';}
+loadServers();loadPets();setInterval(()=>loadServers(false),30000);
 </script></body></html>
 """
 
@@ -100,6 +105,43 @@ def public_servers():
         return jsonify({"error": "No se pudo conectar con la API pública de Roblox."}), 502
     except ValueError:
         return jsonify({"error": "Roblox devolvió una respuesta inesperada."}), 502
+
+@app.get("/api/pets")
+def pet_values():
+    # Community-maintained table; cache for six hours to avoid hammering the source.
+    now = datetime.now(timezone.utc).timestamp()
+    if _pet_cache["data"] and now - _pet_cache["at"] < 21600:
+        return jsonify({"data": _pet_cache["data"], "updated_at": datetime.fromtimestamp(_pet_cache["at"], timezone.utc).isoformat(), "source": PET_VALUES_URL})
+    try:
+        response = requests.get(PET_VALUES_URL, headers={"User-Agent": "Mozilla/5.0 StealAnEggRadar/1.0"}, timeout=20)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        records = []
+        for table in soup.find_all("table"):
+            headers = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
+            if not headers or not any("pet" in h for h in headers) or not any("income" in h for h in headers):
+                continue
+            for tr in table.find_all("tr"):
+                cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
+                if len(cells) < 4 or cells[0].lower() == "pet":
+                    continue
+                # Expected columns: pet, base income, rarity, biome/egg, weight.
+                import re
+                match = re.search(r"\$\s*([\d,.]+)\s*([KMB]?)\s*/s", cells[1], re.I)
+                if not match:
+                    continue
+                multiplier = {"": 1, "K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[match.group(2).upper()]
+                records.append({"name": cells[0], "income": float(match.group(1).replace(",", "")) * multiplier, "rarity": cells[2], "source": cells[3]})
+            if records:
+                break
+        if not records:
+            raise ValueError("No se reconoció la tabla de ganancias de la fuente.")
+        _pet_cache.update({"at": now, "data": records})
+        return jsonify({"data": records, "updated_at": datetime.fromtimestamp(now, timezone.utc).isoformat(), "source": PET_VALUES_URL})
+    except (requests.RequestException, ValueError, IndexError):
+        if _pet_cache["data"]:
+            return jsonify({"data": _pet_cache["data"], "updated_at": datetime.fromtimestamp(_pet_cache["at"], timezone.utc).isoformat(), "source": PET_VALUES_URL, "stale": True})
+        return jsonify({"error": "La fuente comunitaria no respondió o cambió su formato. Consulta el enlace de GrindMath."}), 502
 
 @app.get("/health")
 def health():
