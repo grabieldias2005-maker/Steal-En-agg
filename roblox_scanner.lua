@@ -4,9 +4,10 @@
 -- Sincroniza en tiempo real los huevos del servidor de Roblox con tu web radar.
 -- ==============================================================================
 
-local SERVER_URL = "http://localhost:3000/api/report" -- Si usas ngrok/vps cámbialo por tu URL pública
-local AUTO_SERVER_HOP = true -- Cambia a false si no quieres que cambie de servidor automáticamente
-local SCAN_INTERVAL = 3 -- Segundos antes de enviar el reporte
+local SERVER_URL = _G.RADAR_URL or "http://localhost:5000/api/report"
+local FALLBACK_URL = "https://steal-an-egg-radar.onrender.com/api/report"
+local AUTO_SERVER_HOP = false -- Cambia a true si quieres que rote de servidor automáticamente
+local SCAN_INTERVAL = 2 -- Segundos entre comprobaciones en vivo
 
 -- Servicios
 local HttpService = game:GetService("HttpService")
@@ -23,87 +24,115 @@ if not requestFn then
 end
 
 print("-------------------------------------------------------")
-print(" [HuevosToons] Scanner iniciado en Roblox")
+print(" [HuevosToons] Scanner en Vivo Iniciado en Roblox")
 print(" Servidor JobId: " .. game.JobId)
-print(" Sincronizando con: " .. SERVER_URL)
+print(" Sincronizando con Web Radar: " .. SERVER_URL)
 print("-------------------------------------------------------")
 
--- Lista de mascotas conocidas para reconocimiento rápido
+-- Lista de mascotas principales de Steal An Egg (RBLX Guide)
 local KNOWN_PETS = {
-    "Godzilla", "Royal Skywhale", "World Burner", "Voidseer Pumpkin",
-    "Oni Tiger", "Cave Dragon", "Mosasaurus", "ArchAngel", "Kitsune",
-    "Unicorn", "Cosmic Lion", "Eternal Lunar Dragon", "King Kong",
-    "Pegasus", "Skeleton Horse", "Alien Skeleton Boss", "Centaur",
-    "Cosmic Fox", "RazorFang", "Shark", "Stag"
+    "Spirit World Guardian", "Voidseer Pumpkin", "Skeletal Sabertooth",
+    "Royal Skywhale", "Bone Emperor", "Mecha Scrambler", "Aetheron",
+    "Luminous Cthulhu", "ArchAngel", "World Burner", "Skeletal Gigantus",
+    "Godzilla", "Eternal Lunar Dragon", "Cave Dragon", "Ice Dragon",
+    "Cerberus", "Oni Tiger", "Mosasaurus", "Unicorn", "Cosmic Lion",
+    "King Kong", "Pegasus", "Skeleton Horse", "Alien Skeleton Boss",
+    "Centaur", "Cosmic Fox", "RazorFang", "Shark", "Stag", "Kraken",
+    "Phoenix", "Lava Dragon", "El Maja", "King Snake", "Yeti",
+    "Burrowing Owl", "Raccoon", "Fox", "Chicken", "Dog", "Bird"
 }
 
--- Función para escanear los huevos en el Workspace
+-- Función para deducir el nombre limpio de la mascota a partir de un texto u objeto
+local function extractPetName(rawText)
+    if not rawText or type(rawText) ~= "string" then return nil end
+    local clean = string.gsub(rawText, " Egg", "")
+    clean = string.gsub(clean, "Egg", "")
+    clean = string.gsub(clean, " Huevo", "")
+    clean = string.gsub(clean, "Huevo", "")
+    clean = string.gsub(clean, "^%s*(.-)%s*$", "%1") -- trim
+
+    for _, pet in ipairs(KNOWN_PETS) do
+        if string.find(string.lower(rawText), string.lower(pet)) or string.find(string.lower(clean), string.lower(pet)) then
+            return pet
+        end
+    end
+    if #clean > 2 and clean ~= "Model" and clean ~= "Part" and clean ~= "MeshPart" and clean ~= "Spawn" then
+        return clean
+    end
+    return nil
+end
+
+-- Función para escanear todos los huevos activos en el Workspace
 local function scanEggs()
     local detectedEggs = {}
+    local seenKeys = {}
     
     -- Busca todos los modelos y partes en el mapa que contengan información de huevos
     for _, obj in ipairs(Workspace:GetDescendants()) do
         local nameLower = string.lower(obj.Name)
         
-        -- Si el objeto parece ser un huevo o zona de huevo
-        if string.find(nameLower, "egg") or string.find(nameLower, "huevo") or obj:FindFirstChild("BillboardGui") then
-            local petName = nil
+        -- Si el objeto parece ser un huevo, nido o contiene BillboardGui
+        if string.find(nameLower, "egg") or string.find(nameLower, "huevo") or obj:FindFirstChild("BillboardGui") or obj:FindFirstChildWhichIsA("BillboardGui") then
+            local petName = extractPetName(obj.Name)
             local scale = 1.0
             local area = "Zona Principal"
             local mutations = {}
             local claimed = false
             local parasite = false
             
-            -- 1. Intentar leer atributos directos de Roblox
+            -- 1. Leer atributos de Roblox
             local attrs = obj:GetAttributes()
             if attrs then
                 for k, v in pairs(attrs) do
                     local kl = string.lower(k)
-                    if string.find(kl, "pet") or string.find(kl, "animal") then
-                        petName = tostring(v)
-                    elseif string.find(kl, "scale") or string.find(kl, "mult") or string.find(kl, "multiplier") then
+                    if string.find(kl, "pet") or string.find(kl, "animal") or string.find(kl, "name") then
+                        petName = extractPetName(tostring(v)) or petName
+                    elseif string.find(kl, "scale") or string.find(kl, "mult") or string.find(kl, "multiplier") or string.find(kl, "size") then
                         scale = tonumber(v) or scale
-                    elseif string.find(kl, "area") or string.find(kl, "zone") then
+                    elseif string.find(kl, "area") or string.find(kl, "zone") or string.find(kl, "biome") then
                         area = tostring(v)
-                    elseif string.find(kl, "claim") or string.find(kl, "rob") or string.find(kl, "taken") then
+                    elseif string.find(kl, "claim") or string.find(kl, "rob") or string.find(kl, "taken") or string.find(kl, "stolen") then
                         claimed = (v == true)
+                    elseif string.find(kl, "parasite") then
+                        parasite = (v == true)
                     end
                 end
             end
             
-            -- 2. Intentar leer texto de BillboardGui o SurfaceGui (labels visibles sobre el huevo)
+            -- 2. Leer texto de BillboardGui o SurfaceGui (etiquetas flotantes sobre el huevo)
             for _, gui in ipairs(obj:GetDescendants()) do
                 if gui:IsA("TextLabel") or gui:IsA("TextButton") then
                     local text = gui.Text
                     if text and #text > 0 then
-                        -- Buscar multiplicador (ej: "x12.4" o "12.4x")
+                        -- Buscar multiplicador (ej: "x14.8" o "14.8x")
                         local multMatch = string.match(text, "x?([%d%.]+)x?")
                         if multMatch and tonumber(multMatch) and tonumber(multMatch) > 1 then
                             scale = tonumber(multMatch)
                         end
                         
-                        -- Buscar nombre de mascota
-                        for _, pet in ipairs(KNOWN_PETS) do
-                            if string.find(string.lower(text), string.lower(pet)) then
-                                petName = pet
-                                break
-                            end
+                        -- Extraer nombre de mascota si aún no se tiene
+                        if not petName then
+                            petName = extractPetName(text)
                         end
                         
                         -- Buscar mutaciones en texto
                         local tl = string.lower(text)
-                        if string.find(tl, "gold") then table.insert(mutations, "Golden") end
-                        if string.find(tl, "rainbow") then table.insert(mutations, "Rainbow") end
-                        if string.find(tl, "silver") then table.insert(mutations, "Silver") end
-                        if string.find(tl, "monstrous") or string.find(tl, "big") then table.insert(mutations, "Monstrous") end
-                        if string.find(tl, "parasite") then parasite = true end
-                        if string.find(tl, "robado") or string.find(tl, "claimed") then claimed = true end
+                        if string.find(tl, "rainbow") or string.find(tl, "arcoiris") then table.insert(mutations, "Rainbow") end
+                        if string.find(tl, "gold") or string.find(tl, "dorado") then table.insert(mutations, "Golden") end
+                        if string.find(tl, "silver") or string.find(tl, "plata") then table.insert(mutations, "Silver") end
+                        if string.find(tl, "bloom") then table.insert(mutations, "Bloom") end
+                        if string.find(tl, "fractured") or string.find(tl, "scrambled") then table.insert(mutations, "Fractured") end
+                        if string.find(tl, "monstrous") or string.find(tl, "big") or string.find(tl, "gigante") then table.insert(mutations, "Monstrous") end
+                        if string.find(tl, "parasite") or string.find(tl, "parasito") then parasite = true end
+                        if string.find(tl, "robado") or string.find(tl, "claimed") or string.find(tl, "taken") then claimed = true end
                     end
                 end
             end
             
-            -- Si encontramos una mascota válida o un multiplicador llamativo
-            if petName or scale > 1.5 then
+            -- Evitar duplicados del mismo objeto
+            local eggKey = tostring(petName or "Egg") .. "|" .. tostring(scale) .. "|" .. tostring(area)
+            if (petName or scale > 1.2) and not seenKeys[eggKey] then
+                seenKeys[eggKey] = true
                 table.insert(detectedEggs, {
                     animal = petName or "Huevo Especial",
                     area = area,
@@ -114,20 +143,6 @@ local function scanEggs()
                 })
             end
         end
-    end
-    
-    -- Si el juego tiene una estructura fija o no encontró con el método genérico,
-    -- creamos una muestra detectada con los huevos activos del servidor
-    if #detectedEggs == 0 then
-        -- Muestra de seguridad para registrar presencia del servidor
-        table.insert(detectedEggs, {
-            animal = "Godzilla",
-            area = "Titan Temple",
-            scale = 4.5,
-            mutations = {"Golden"},
-            claimed = false,
-            parasite = false
-        })
     end
     
     return detectedEggs
@@ -213,10 +228,24 @@ local function reportToServer()
         })
     end)
     
-    if success and response then
-        print("[HuevosToons] ✅ Sincronizado con éxito! Estado: " .. tostring(response.StatusCode or 200))
+    if not (success and response and response.StatusCode == 200) and FALLBACK_URL then
+        -- Intentar fallback a Render
+        pcall(function()
+            response = requestFn({
+                Url = FALLBACK_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonBody
+            })
+        end)
+    end
+
+    if response and (response.StatusCode == 200 or response.StatusCode == 201) then
+        print("[HuevosToons] ✅ ¡" .. #eggs .. " huevos sincronizados con el radar web!")
     else
-        warn("[HuevosToons] ❌ Error al sincronizar: " .. tostring(response))
+        warn("[HuevosToons] ⚠️ Estado de reporte: " .. tostring(response and response.StatusCode or "Desconectado"))
     end
 end
 
@@ -247,14 +276,26 @@ local function serverHop()
     TeleportService:Teleport(placeId, Players.LocalPlayer)
 end
 
--- Bucle principal de ejecución
+-- Bucle principal de escaneo continuo en el servidor actual
 task.spawn(function()
-    task.wait(SCAN_INTERVAL)
-    reportToServer()
-    
-    if AUTO_SERVER_HOP then
-        task.wait(2)
-        serverHop()
+    while true do
+        task.wait(SCAN_INTERVAL)
+        reportToServer()
+        
+        if AUTO_SERVER_HOP then
+            task.wait(3)
+            serverHop()
+            break
+        end
+    end
+end)
+
+-- Escuchar en tiempo real cuando un nuevo huevo aparece en Workspace
+Workspace.DescendantAdded:Connect(function(descendant)
+    local nameLower = string.lower(descendant.Name)
+    if string.find(nameLower, "egg") or string.find(nameLower, "huevo") then
+        task.wait(0.6) -- Breve espera a que carguen los TextLabels y atributos
+        reportToServer()
     end
 end)
 

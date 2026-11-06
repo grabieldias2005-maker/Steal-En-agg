@@ -283,6 +283,13 @@ def update_live_egg_targets():
     servers = fetch_real_roblox_servers()
     active_zones = ZONES_DATA[:10]
 
+    # Preservar reportes en vivo de escáneres de Roblox que sigan vigentes (< 300s)
+    reported_by_key = {}
+    for t in current_live_targets:
+        active_rep = [s for s in t.get("servers", []) if s.get("is_reported") and s.get("age_s", 0) < 300]
+        if active_rep:
+            reported_by_key[t["key"]] = (t, active_rep)
+
     new_targets = []
     server_idx = 0
 
@@ -366,6 +373,20 @@ def update_live_egg_targets():
             "best_scale": max((s["scale"] for s in srv_list), default=1.0),
             "servers": srv_list
         })
+
+    # Re-insertar los servidores reportados en vivo que sigan activos
+    for key, (orig_t, active_rep) in reported_by_key.items():
+        existing = next((t for t in new_targets if t["key"] == key), None)
+        if existing:
+            for s in active_rep:
+                if not any(x["jobid"] == s["jobid"] for x in existing["servers"]):
+                    existing["servers"].insert(0, s)
+            existing["servers"].sort(key=lambda s: s.get("val_sec", 0), reverse=True)
+            existing["best_value"] = max(s.get("val_sec", 0) for s in existing["servers"])
+            existing["best_scale"] = max(s["scale"] for s in existing["servers"])
+        else:
+            orig_t["servers"] = active_rep
+            new_targets.insert(0, orig_t)
 
     # Sincronizar y ordenar los huevos del más valioso al menor
     new_targets.sort(key=lambda t: t["best_value"], reverse=True)
@@ -543,19 +564,46 @@ def api_report_egg():
         claimed = bool(egg.get("claimed") or egg.get("robado"))
         parasite = bool(egg.get("parasite"))
 
+        # Obtener metadata verificada de RBLX Guide
+        pet_meta = next((p for p in _pet_cache["data"] if p["name"].lower() == animal.lower() or p.get("slug") == animal.lower().replace(" ", "-")), None)
+        base_income = pet_meta.get("income_num", 1e9) if pet_meta else 1e9
+        growth_time = pet_meta.get("growth_time", "1h") if pet_meta else "1h"
+        req_speed = pet_meta.get("required_speed", "5k") if pet_meta else "5k"
+        egg_name = pet_meta.get("egg_name", f"{animal} Egg") if pet_meta else f"{animal} Egg"
+        pet_img = pet_meta.get("image_png", f"/assets/pets/{animal.lower().replace(' ', '-')}.png") if pet_meta else f"/assets/pets/{animal.lower().replace(' ', '-')}.png"
+
+        # Multiplicador de mutaciones verificadas
+        mut_mult = 1.0
+        for m in muts:
+            ml = m.lower()
+            if "rainbow" in ml: mut_mult = max(mut_mult, 3.5)
+            elif "golden" in ml or "gold" in ml: mut_mult = max(mut_mult, 2.5)
+            elif "silver" in ml: mut_mult = max(mut_mult, 1.2)
+
+        total_income_per_sec = base_income * scale * mut_mult
+        money_formatted = format_currency_per_second(total_income_per_sec)
+
         # Buscar o crear target
         target = next((t for t in current_live_targets if t["area"].lower() == area.lower() and t["animal"].lower() == animal.lower()), None)
         if not target:
-            meta = next((z for z in ZONES_DATA if z["animal"].lower() == animal.lower()), {"rarity": egg.get("rarity", "Divine"), "color": egg.get("color", "#fbff00")})
+            meta = next((z for z in ZONES_DATA if z["animal"].lower() == animal.lower()), {"rarity": egg.get("rarity", pet_meta.get("rarity", "Divine") if pet_meta else "Divine"), "color": egg.get("color", "#fbff00")})
             target = {
                 "key": f"{area}|{animal}",
                 "area": area,
                 "animal": animal,
                 "rarity": egg.get("rarity", meta["rarity"]),
                 "color": egg.get("color", meta["color"]),
+                "income": pet_meta.get("income", "$1B/s") if pet_meta else "$1B/s",
+                "income_num": base_income,
+                "best_value": total_income_per_sec,
+                "growth_time": growth_time,
+                "required_speed": req_speed,
+                "egg_name": egg_name,
+                "image": pet_img,
                 "best_scale": scale,
                 "servers": []
             }
+            # Colocarlo arriba en el radar para notificación instantánea
             current_live_targets.insert(0, target)
 
         now_ms = int(time.time() * 1000)
@@ -563,10 +611,13 @@ def api_report_egg():
         srv = next((s for s in target["servers"] if s["jobid"] == job_id), None)
         if srv:
             srv["scale"] = scale
+            srv["val_sec"] = total_income_per_sec
+            srv["money"] = money_formatted
             srv["mutations"] = muts
             srv["claimed"] = claimed
             srv["parasite"] = parasite
             srv["age_s"] = 0
+            srv["is_reported"] = True
             srv["spawn_ts"] = now_ms
             srv["timeout_in"] = reset_in_now
             srv["players"] = p_count
@@ -575,11 +626,13 @@ def api_report_egg():
                 "jobid": job_id,
                 "scale": scale,
                 "gen": gen,
-                "speed": egg.get("speed", "8.5k/s"),
-                "money": egg.get("money", "$450M"),
+                "val_sec": total_income_per_sec,
+                "speed": egg.get("speed", req_speed),
+                "money": money_formatted,
                 "mutations": muts,
                 "parasite": parasite,
                 "claimed": claimed,
+                "is_reported": True,
                 "join": f"https://www.roblox.com/games/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "deepLink": f"roblox://experiences/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "age_s": 0,
@@ -589,7 +642,9 @@ def api_report_egg():
                 "maxPlayers": max_p
             })
 
+        target["servers"].sort(key=lambda s: s.get("val_sec", 0), reverse=True)
         target["best_scale"] = max(s["scale"] for s in target["servers"])
+        target["best_value"] = max(s.get("val_sec", 0) for s in target["servers"])
 
     return jsonify({"ok": True, "reported": len(eggs)})
 

@@ -667,6 +667,7 @@
         </div>
 
         <div class="chips">
+          ${(s.is_reported || ageSec <= 20) ? `<span class="mut" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 800; box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);" title="Detectado en tiempo real desde el juego">⚡ EN VIVO</span>` : ""}
           ${(s.mutations || []).map(m => {
             const low = m.toLowerCase();
             return `<span class="mut mut-${low}">${esc(m.toUpperCase())}</span>`;
@@ -1237,10 +1238,10 @@
     fetchHistoryData();
 
     if (pollTimer) clearInterval(pollTimer);
-    // Polling de servidores cada 3.5 segundos para no sobrecargar y mantener frescura
+    // Polling de servidores cada 2.5 segundos para reflejar en vivo cada nuevo huevo
     pollTimer = setInterval(() => {
       fetchLiveData();
-    }, 3500);
+    }, 2500);
 
     // Reloj continuo de alta precisión cada 500ms (sin desincronización ni saltos)
     setInterval(() => {

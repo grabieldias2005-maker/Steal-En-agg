@@ -117,16 +117,30 @@ function parseBkRadarEmbed(msg) {
 }
 
 async function sendToRadar(payload) {
-  try {
-    const res = await fetch('http://localhost:3000/api/report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    console.log(`[Discord -> Radar] ⚡ ¡SINCRONIZADO!: ${payload.eggs[0].animal} (${payload.eggs[0].scale}x) en ${payload.eggs[0].area} | Servidor: ${payload.jobId}`);
-  } catch (err) {
-    console.error(`[Discord -> Radar] Error enviando al radar:`, err.message);
+  const radarUrls = [
+    process.env.RADAR_URL,
+    'http://localhost:5000/api/report',
+    'http://127.0.0.1:5000/api/report',
+    'http://localhost:3000/api/report',
+    'https://steal-an-egg-radar.onrender.com/api/report'
+  ].filter(Boolean);
+
+  for (const url of radarUrls) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        console.log(`[Discord -> Radar] ⚡ ¡SINCRONIZADO!: ${payload.eggs[0].animal} (${payload.eggs[0].scale}x) en ${payload.eggs[0].area} | Servidor: ${payload.jobId}`);
+        return;
+      }
+    } catch (err) {
+      // Intentar con siguiente URL
+    }
   }
+  console.warn(`[Discord -> Radar] ⚠️ No se pudo enviar el huevo a ninguna URL activa del radar.`);
 }
 
 const client = new Client({
