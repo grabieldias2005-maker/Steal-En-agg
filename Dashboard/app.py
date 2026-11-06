@@ -310,7 +310,9 @@ def update_live_egg_targets():
                 muts.append(random.choice(possible_muts))
 
             age = random.randint(10, 75)
-            timeout_in = max(0, 300 - age)
+            now_ms = int(time.time() * 1000)
+            spawn_ts = now_ms - (age * 1000)
+            reset_in_calc, _, _ = get_synced_game_clock()
             srv_list.append({
                 "jobid": job_id,
                 "scale": scale,
@@ -323,7 +325,8 @@ def update_live_egg_targets():
                 "join": f"https://www.roblox.com/games/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "deepLink": f"roblox://experiences/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "age_s": age,
-                "timeout_in": timeout_in,
+                "spawn_ts": spawn_ts,
+                "timeout_in": reset_in_calc,
                 "players": playing,
                 "maxPlayers": max_p
             })
@@ -433,11 +436,15 @@ def api_live(sub=None):
 
         update_live_egg_targets()
     else:
-        # Incrementar edad de servidores de forma gradual
+        # Mantener los servidores sincronizados con el reloj de la página
         for t in current_live_targets:
             for s in t.get("servers", []):
-                s["age_s"] = s.get("age_s", 0) + 1
-                s["timeout_in"] = max(0, 300 - s["age_s"])
+                if "spawn_ts" in s:
+                    s["age_s"] = max(0, int((now_ms - s["spawn_ts"]) / 1000))
+                else:
+                    s["age_s"] = s.get("age_s", 0) + 1
+                    s["spawn_ts"] = now_ms - (s["age_s"] * 1000)
+                s["timeout_in"] = reset_in
 
     servers = fetch_real_roblox_servers()
     bots_count = max(4, len(servers))
@@ -535,6 +542,8 @@ def api_report_egg():
             }
             current_live_targets.insert(0, target)
 
+        now_ms = int(time.time() * 1000)
+        reset_in_now = get_synced_game_clock()[0]
         srv = next((s for s in target["servers"] if s["jobid"] == job_id), None)
         if srv:
             srv["scale"] = scale
@@ -542,6 +551,8 @@ def api_report_egg():
             srv["claimed"] = claimed
             srv["parasite"] = parasite
             srv["age_s"] = 0
+            srv["spawn_ts"] = now_ms
+            srv["timeout_in"] = reset_in_now
             srv["players"] = p_count
         else:
             target["servers"].insert(0, {
@@ -556,6 +567,8 @@ def api_report_egg():
                 "join": f"https://www.roblox.com/games/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "deepLink": f"roblox://experiences/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "age_s": 0,
+                "spawn_ts": now_ms,
+                "timeout_in": reset_in_now,
                 "players": p_count,
                 "maxPlayers": max_p
             })

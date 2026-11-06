@@ -632,8 +632,17 @@
     const fillPercent = Math.min(100, Math.round((s.scale / Math.max(maxScale, 1)) * 100));
     const isRobado = !!s.claimed;
     const isParasite = !!s.parasite;
-    const ageSec = s.age_s || 0;
-    const timeoutSec = s.timeout_in != null ? s.timeout_in : Math.max(0, 300 - ageSec);
+
+    // Sincronización continua de la edad del servidor con el reloj del cliente
+    const now = Date.now();
+    const spawnMs = s.spawn_ts || (now - (s.age_s || 0) * 1000);
+    const ageSec = Math.max(0, Math.floor((now - spawnMs) / 1000));
+
+    // Timeout del servidor exactamente sincronizado con el contador regresivo de la página
+    const timeoutSec = targetResetTimestamp != null
+      ? Math.max(0, Math.round((targetResetTimestamp - now) / 1000))
+      : (s.timeout_in != null ? s.timeout_in : resetIn);
+
     const color = ageColor(ageSec);
 
     return `
@@ -656,8 +665,8 @@
           ${s.speed ? `<span class="chip-speed" title="Velocidad Recomendada">👟 ${esc(s.speed)}</span>` : ""}
           ${s.money ? `<span class="chip-money" title="Ingresos Estimados">💵 ${esc(s.money)}</span>` : ""}
           <span class="chip-users" title="Jugadores en servidor">${s.players || 4}/${s.maxPlayers || 12}</span>
-          <span class="chip-age" title="Tiempo activo en el servidor" style="color: ${color}; font-weight: 600;">⏱️ ${fmtAge(ageSec)}</span>
-          <span class="chip-timeout" title="Tiempo restante antes del reset o despawn" style="color: ${timeoutSec <= 40 ? '#f87171' : 'var(--muted)'};">⏳ ${fmtTime(timeoutSec)}</span>
+          <span class="chip-age" data-spawn="${spawnMs}" title="Tiempo activo en el servidor" style="color: ${color}; font-weight: 600;">⏱️ <b class="val-age">${fmtAge(ageSec)}</b></span>
+          <span class="chip-timeout" title="Tiempo restante antes del próximo reset de servidores" style="color: ${timeoutSec <= 40 ? '#f87171' : 'var(--muted)'};">⏳ <b class="val-timeout">${fmtTime(timeoutSec)}</b></span>
         </div>
 
         <div class="act">
@@ -1223,6 +1232,7 @@
     // Reloj continuo de alta precisión cada 500ms (sin desincronización ni saltos)
     setInterval(() => {
       updateClockDisplay();
+      updateServerTimes();
       updateUfoDisplay();
     }, 500);
   }
@@ -1321,6 +1331,41 @@
       const pct = Math.min(100, Math.max(0, ((total - remaining) / total) * 100));
       fillEl.style.width = pct + "%";
       fillEl.classList.toggle("last", isLast);
+    }
+  }
+
+  function updateServerTimes() {
+    const now = Date.now();
+    const remainingReset = targetResetTimestamp != null 
+      ? Math.max(0, Math.round((targetResetTimestamp - now) / 1000))
+      : resetIn;
+    const timeoutFormatted = fmtTime(remainingReset);
+    const isUrgent = remainingReset <= 40;
+
+    // Sincronizar todos los contadores de timeout de servidores con la página en tiempo real
+    const timeoutEls = document.querySelectorAll(".chip-timeout");
+    for (let i = 0; i < timeoutEls.length; i++) {
+      const el = timeoutEls[i];
+      const b = el.querySelector(".val-timeout") || el;
+      if (b && b.textContent !== timeoutFormatted) {
+        b.textContent = timeoutFormatted;
+      }
+      el.style.color = isUrgent ? "#f87171" : "var(--muted)";
+    }
+
+    // Sincronizar la edad activa de cada servidor de forma continua y suave
+    const ageEls = document.querySelectorAll(".chip-age[data-spawn]");
+    for (let i = 0; i < ageEls.length; i++) {
+      const el = ageEls[i];
+      const spawnMs = Number(el.getAttribute("data-spawn"));
+      if (!spawnMs) continue;
+      const ageSec = Math.max(0, Math.floor((now - spawnMs) / 1000));
+      const b = el.querySelector(".val-age") || el;
+      const ageTxt = fmtAge(ageSec);
+      if (b && b.textContent !== ageTxt) {
+        b.textContent = ageTxt;
+      }
+      el.style.color = ageColor(ageSec);
     }
   }
 
