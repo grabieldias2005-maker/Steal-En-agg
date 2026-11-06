@@ -36,12 +36,14 @@
 
   function getPetImage(target) {
     if (!target) return "assets/logo.png";
+    if (target.image && !target.image.includes("eggstock")) return target.image;
     const name = target.animal || target.name || "";
     if (PET_IMAGES[name]) return PET_IMAGES[name];
-    if (target.thumbnail) return target.thumbnail;
+    if (target.thumbnail && !target.thumbnail.includes("eggstock")) return target.thumbnail;
 
-    const norm = name.toLowerCase().replace(/\s+/g, '_');
-    return `assets/pets/${norm}.png`;
+    const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const under = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return `assets/pets/${slug}.png`;
   }
 
   const RARITY_COLORS = {
@@ -214,9 +216,17 @@
   }
 
   function fmtAge(sec) {
-    if (sec < 60) return `hace ${sec}s`;
-    const m = Math.floor(sec / 60);
-    return `hace ${m}m`;
+    const s = Math.max(0, Math.floor(sec));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}m ${rem}s`;
+  }
+
+  function ageColor(sec) {
+    const t = Math.min(1, Math.max(0, (sec || 0) / 300));
+    const hue = Math.round(t < 0.5 ? 140 - 160 * t : 100 - 100 * t);
+    return `hsl(${hue}, 85%, 60%)`;
   }
 
   function fmtTime(sec) {
@@ -592,6 +602,8 @@
                 <div class="mt">
                   <span>${esc(t.rarity)}</span>
                   <span>${svList.length} ${svList.length === 1 ? 'servidor' : 'servidores'}</span>
+                  ${t.growth_time ? `<span title="Tiempo de eclosión / crecimiento (RBLX Guide)">🥚 ${esc(t.growth_time)}</span>` : ""}
+                  ${t.required_speed ? `<span title="Velocidad requerida para robar (RBLX Guide)">⚡ ${esc(t.required_speed)}</span>` : ""}
                 </div>
               </div>
             </div>
@@ -620,6 +632,9 @@
     const fillPercent = Math.min(100, Math.round((s.scale / Math.max(maxScale, 1)) * 100));
     const isRobado = !!s.claimed;
     const isParasite = !!s.parasite;
+    const ageSec = s.age_s || 0;
+    const timeoutSec = s.timeout_in != null ? s.timeout_in : Math.max(0, 300 - ageSec);
+    const color = ageColor(ageSec);
 
     return `
       <div class="row ${isRobado ? 'is-robado' : ''}">
@@ -641,7 +656,8 @@
           ${s.speed ? `<span class="chip-speed" title="Velocidad Recomendada">👟 ${esc(s.speed)}</span>` : ""}
           ${s.money ? `<span class="chip-money" title="Ingresos Estimados">💵 ${esc(s.money)}</span>` : ""}
           <span class="chip-users" title="Jugadores en servidor">${s.players || 4}/${s.maxPlayers || 12}</span>
-          <span class="chip-age" title="Tiempo activo">${fmtAge(s.age_s || 0)}</span>
+          <span class="chip-age" title="Tiempo activo en el servidor" style="color: ${color}; font-weight: 600;">⏱️ ${fmtAge(ageSec)}</span>
+          <span class="chip-timeout" title="Tiempo restante antes del reset o despawn" style="color: ${timeoutSec <= 40 ? '#f87171' : 'var(--muted)'};">⏳ ${fmtTime(timeoutSec)}</span>
         </div>
 
         <div class="act">

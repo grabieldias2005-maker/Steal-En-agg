@@ -124,31 +124,94 @@ _pet_cache = {
     "source": "Inicializando"
 }
 
+def normalize_rarity(rarity_str: Optional[str]) -> str:
+    """Normaliza y valida estrictamente las rarezas (español e inglés)."""
+    if not rarity_str:
+        return "Pendiente de verificación"
+    cleaned = rarity_str.strip()
+    lower = cleaned.lower()
+    spanish_map = {
+        "raro": "Rare",
+        "rare": "Rare",
+        "divino": "Divine",
+        "divine": "Divine",
+        "secreto": "Secret",
+        "secret": "Secret",
+        "eterno": "Eternal",
+        "eternal": "Eternal",
+        "común": "Common",
+        "comun": "Common",
+        "common": "Common",
+        "poco común": "Uncommon",
+        "poco comun": "Uncommon",
+        "uncommon": "Uncommon",
+        "épico": "Epic",
+        "epico": "Epic",
+        "epic": "Epic",
+        "legendario": "Legendary",
+        "legendary": "Legendary",
+        "mítico": "Mythic",
+        "mitico": "Mythic",
+        "mythic": "Mythic",
+        "cósmico": "Cosmic",
+        "cosmico": "Cosmic",
+        "cosmic": "Cosmic"
+    }
+    if lower in spanish_map:
+        return spanish_map[lower]
+    if lower in TARGET_RARITIES_LOWER:
+        return TARGET_RARITIES_LOWER[lower]
+    return cleaned.title()
+
+def parse_income_value(val: Any) -> float:
+    """Convierte cadenas como $15B/s o $3.5M/s en valores numéricos exactos."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if not isinstance(val, str):
+        return 0.0
+    s = val.replace("$", "").replace("/s", "").replace("/sec", "").strip()
+    mult = 1.0
+    if s.endswith(("T", "t")):
+        mult = 1e12
+        s = s[:-1]
+    elif s.endswith(("B", "b")):
+        mult = 1e9
+        s = s[:-1]
+    elif s.endswith(("M", "m")):
+        mult = 1e6
+        s = s[:-1]
+    elif s.endswith(("K", "k")):
+        mult = 1e3
+        s = s[:-1]
+    try:
+        return float(s) * mult
+    except Exception:
+        return 0.0
+
 def load_baseline_pets() -> List[Dict[str, Any]]:
-    """Carga el conjunto de mascotas base empaquetado para tolerancia a fallos."""
+    """Carga el conjunto de mascotas base empaquetado y enriquecido desde RBLX Guide."""
     baseline_path = os.path.join(BASE_DIR, "data", "pets_baseline.json")
     if os.path.exists(baseline_path):
         try:
             with open(baseline_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("data", [])
-        except Exception:
-            pass
+                pets = data.get("data", [])
+                for p in pets:
+                    p["rarity"] = normalize_rarity(p.get("rarity"))
+                    if "income_num" not in p:
+                        p["income_num"] = parse_income_value(p.get("income", 0))
+                    if not p.get("origin_egg"):
+                        p["origin_egg"] = p.get("egg_name") or f"{p.get('name')} Egg"
+                    slug = p.get("slug") or p.get("name", "").lower().replace(" ", "-")
+                    p["image_png"] = f"/assets/pets/{slug}.png"
+                return pets
+        except Exception as e:
+            logger.warning(f"Error cargando baseline pets: {e}")
     return []
 
 _pet_cache["data"] = load_baseline_pets()
 _pet_cache["updated_at"] = datetime.now(timezone.utc).isoformat()
-_pet_cache["source"] = "Catálogo base verificado (RBLX Guide & GrindMath)"
-
-def normalize_rarity(rarity_str: Optional[str]) -> str:
-    """Normaliza y valida estrictamente las rarezas."""
-    if not rarity_str:
-        return "Pendiente de verificación"
-    cleaned = rarity_str.strip()
-    lower = cleaned.lower()
-    if lower in TARGET_RARITIES_LOWER:
-        return TARGET_RARITIES_LOWER[lower]
-    return cleaned.title()
+_pet_cache["source"] = "Catálogo oficial RBLX Guide (con PNGs y tiempos de crecimiento)"
 
 def format_currency_per_second(value: float) -> str:
     """Formatea valores monetarios por segundo en sufijos legibles."""
@@ -246,6 +309,8 @@ def update_live_egg_targets():
             if random.random() > 0.75:
                 muts.append(random.choice(possible_muts))
 
+            age = random.randint(10, 75)
+            timeout_in = max(0, 300 - age)
             srv_list.append({
                 "jobid": job_id,
                 "scale": scale,
@@ -257,18 +322,30 @@ def update_live_egg_targets():
                 "claimed": random.random() < 0.2,
                 "join": f"https://www.roblox.com/games/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "deepLink": f"roblox://experiences/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
-                "age_s": random.randint(10, 75),
+                "age_s": age,
+                "timeout_in": timeout_in,
                 "players": playing,
                 "maxPlayers": max_p
             })
 
         srv_list.sort(key=lambda s: s["scale"], reverse=True)
+        
+        pet_meta = next((p for p in _pet_cache["data"] if p["name"].lower() == z["animal"].lower() or p.get("slug") == z["animal"].lower().replace(" ", "-")), None)
+        growth_time = pet_meta.get("growth_time", "1h") if pet_meta else "1h"
+        req_speed = pet_meta.get("required_speed", "5k") if pet_meta else "5k"
+        egg_name = pet_meta.get("egg_name", f"{z['animal']} Egg") if pet_meta else f"{z['animal']} Egg"
+        pet_img = pet_meta.get("image_png", f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png") if pet_meta else f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png"
+
         new_targets.append({
             "key": f"{z['area']}|{z['animal']}",
             "area": z["area"],
             "animal": z["animal"],
             "rarity": z["rarity"],
             "color": z["color"],
+            "growth_time": growth_time,
+            "required_speed": req_speed,
+            "egg_name": egg_name,
+            "image": pet_img,
             "best_scale": srv_list[0]["scale"] if srv_list else 1.0,
             "servers": srv_list
         })
@@ -360,6 +437,7 @@ def api_live(sub=None):
         for t in current_live_targets:
             for s in t.get("servers", []):
                 s["age_s"] = s.get("age_s", 0) + 1
+                s["timeout_in"] = max(0, 300 - s["age_s"])
 
     servers = fetch_real_roblox_servers()
     bots_count = max(4, len(servers))
@@ -638,9 +716,9 @@ def api_pets():
                                     search in p.get("rarity", "").lower())]
 
     if sort_by == "income_desc":
-        pets.sort(key=lambda p: p.get("income", 0), reverse=True)
+        pets.sort(key=lambda p: p.get("income_num", 0), reverse=True)
     elif sort_by == "income_asc":
-        pets.sort(key=lambda p: p.get("income", 0))
+        pets.sort(key=lambda p: p.get("income_num", 0))
 
     return jsonify({
         "success": True,
