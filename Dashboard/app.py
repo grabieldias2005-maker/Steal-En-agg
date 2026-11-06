@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, render_template_string, request
 
 app = Flask(__name__)
-PLACE_ID = "107778070777162"\nPET_VALUES_URL = "https://grindmath.app/steal-an-egg/values/"\n_pet_cache = {"at": 0, "data": []}
+PLACE_ID = "107778070777162"
+PET_VALUES_URL = "https://grindmath.app/steal-an-egg/values/"
+_pet_cache = {"at": 0, "data": []}
 ROBLOX_SERVERS_URL = f"https://games.roblox.com/v1/games/{PLACE_ID}/servers/Public"
 
 PAGE = r"""
