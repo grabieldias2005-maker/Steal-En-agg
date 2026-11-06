@@ -1,13 +1,27 @@
-# Steal An Egg Tracker 🥚
+# Steal An Egg Radar & Tracker 🥚
 
-Sistema completo de telemetría, rastreo de servidores y **Server Hopping dirigido** para el juego de Roblox: **"Steal An Egg"**.
+Sistema integral para el juego de Roblox **"Steal An Egg"** (PlaceId: `107778070777162`).
+Incluye:
+1. **Radar Web & Dashboard (`Dashboard/`)**: Aplicación Python + Flask lista para Render con radar en vivo de servidores públicos de Roblox, botón JOIN seguro, catálogo comunitario de 265+ mascotas con filtros estrictos de 4 rarezas (`Rare`, `Divine`, `Secret`, `Eternal`), calculadora de ganancias, evidences de spawn e historial de notificaciones.
+2. **Client Luau (`Client/`)**: Módulos para escaneo local e inyección en Roblox Studio o ejecutores.
+3. **Backend API (`Backend/` & `Backend_Python/`)**: Servidores Node.js (Express + Redis) y Python (FastAPI).
 
 ---
 
 ## 📁 Estructura del Proyecto
 
 ```text
-Steal An egg scripte/
+Steal-En-agg/
+├── Dashboard/                  # Dashboard Web Principal (Python + Flask para Render)
+│   ├── app.py                  # Servidor Flask, APIs (/api/servers, /api/pets, /api/calculate, etc.) y UI
+│   ├── requirements.txt        # Dependencias (Flask, requests, gunicorn, beautifulsoup4, pytest)
+│   ├── render.yaml             # Definición de despliegue como Blueprint en Render
+│   ├── data/
+│   │   └── pets_baseline.json  # Catálogo verificado de 265 mascotas (RBLX Guide & GrindMath)
+│   ├── tests/
+│   │   └── test_radar.py       # Suite de pruebas automatizadas con pytest (12 pruebas)
+│   └── README.md               # Guía específica del Dashboard
+│
 ├── Client/                     # Scripts y módulos para el cliente Luau (Roblox)
 │   ├── Modules/
 │   │   ├── Config.luau         # Umbrales de rareza, URLs y alias de propiedades
@@ -25,14 +39,32 @@ Steal An egg scripte/
 │   │   ├── services/redisService.js # TTL automático (con fallback en memoria)
 │   │   └── utils/validators.js # Validación de payloads y mapeo de rarezas
 │   ├── package.json
-│   ├── .env.example
-│   └── .env
+│   └── ...
 │
 ├── Backend_Python/             # Alternativa de backend en Python (FastAPI)
 │   ├── app.py
 │   └── requirements.txt
 │
+├── render.yaml                 # Configuración de despliegue raíz para Render (Dashboard)
 └── README.md
+```
+
+---
+
+## 🚀 Inicio Rápido con el Dashboard Web (Render)
+
+El servicio principal de producción es el **Dashboard** en Python + Flask:
+
+```bash
+cd Dashboard
+pip install -r requirements.txt
+python app.py
+```
+Abre tu navegador en `http://localhost:10000` para acceder al Radar de servidores, catálogo con filtros de 4 rarezas y calculadora.
+
+Para ejecutar las pruebas:
+```bash
+pytest Dashboard/tests/test_radar.py -v
 ```
 
 ---
