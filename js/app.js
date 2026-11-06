@@ -80,7 +80,7 @@
   // State
   let session = localStorage.getItem("eggr.session") ? JSON.parse(localStorage.getItem("eggr.session")) : null;
   let view = "live"; // "live" | "history"
-  let sortKey = "scale"; // "scale" | "gen" | "recent" | "rare"
+  let sortKey = "val"; // "val" (más valioso) | "scale" | "gen" | "recent" | "rare"
   let sortDir = -1; // -1 desc, 1 asc
   let showRobados = true;
   let filterHide = JSON.parse(localStorage.getItem("eggr.filterHide") || "[]");
@@ -404,10 +404,11 @@
           </button>
 
           <div class="seg" id="sortGroup">
+            <button type="button" class="${sortKey === 'val' ? 'on' : ''}" data-sort="val" title="Huevos y servidores más valiosos del juego">💰 Más Valioso</button>
+            <button type="button" class="${sortKey === 'scale' ? 'on' : ''}" data-sort="scale">Multiplicador</button>
             <button type="button" class="${sortKey === 'gen' ? 'on' : ''}" data-sort="gen">Generación</button>
-            <button type="button" class="${sortKey === 'scale' ? 'on' : ''}" data-sort="scale">Tamaño</button>
+            <button type="button" class="${sortKey === 'rare' ? 'on' : ''}" data-sort="rare">Rareza</button>
             <button type="button" class="${sortKey === 'recent' ? 'on' : ''}" data-sort="recent">Reciente</button>
-            <button type="button" class="${sortKey === 'rare' ? 'on' : ''}" data-sort="rare">Raro</button>
             <button type="button" class="dir" id="sortDirBtn" title="Cambiar dirección">
               ${sortDir === -1 ? ICONS.arrowDown : ICONS.arrowUp}
             </button>
@@ -553,8 +554,13 @@
     // Filter targets
     let visibleTargets = targets.filter(t => !filterHide.includes(t.key));
 
-    // Sort targets
+    // Sort targets (Sincronización por los huevos más valiosos)
     visibleTargets.sort((a, b) => {
+      if (sortKey === "val" || sortKey === "value") {
+        const valA = a.best_value || ((a.income_num || 1e9) * (a.best_scale || 1));
+        const valB = b.best_value || ((b.income_num || 1e9) * (b.best_scale || 1));
+        return (valB - valA) * sortDir;
+      }
       if (sortKey === "scale") {
         return (b.best_scale - a.best_scale) * sortDir;
       }
@@ -582,6 +588,13 @@
         svList = svList.filter(s => !s.claimed);
       }
       if (!svList.length) return;
+
+      // Ordenar los servidores de este huevo del más lucrativo al menor
+      svList.sort((sa, sb) => {
+        const vA = sa.val_sec || ((sa.scale || 1) * (sa.gen || 1));
+        const vB = sb.val_sec || ((sb.scale || 1) * (sb.gen || 1));
+        return vB - vA;
+      });
 
       const petImg = getPetImage(t);
       const rarColor = t.color || RARITY_COLORS[t.rarity] || "#ffc21a";

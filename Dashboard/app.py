@@ -59,21 +59,23 @@ STANDARD_MUTATIONS = [
     {"name": "Rainbow", "multiplier": 3.5},
 ]
 
-# Zonas y objetivos principales para el Radar en Vivo
+# Zonas y objetivos principales para el Radar en Vivo (Huevos más valiosos del juego)
 ZONES_DATA = [
-    {"area": "Titan Temple", "animal": "Godzilla", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Enchanted Forest", "animal": "Spirit World Guardian", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Halloween Dimension", "animal": "Voidseer Pumpkin", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Skeletal Egg", "animal": "Skeletal Sabertooth", "rarity": "Divine", "color": "#fbff00"},
     {"area": "Enchanted Forest", "animal": "Royal Skywhale", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Halloween Dimension", "animal": "Bone Emperor", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Event Biome", "animal": "Mecha Scrambler", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Angels & Demons", "animal": "Aetheron", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Luminous Egg", "animal": "Luminous Cthulhu", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Angels & Demons", "animal": "ArchAngel", "rarity": "Divine", "color": "#fbff00"},
     {"area": "Light Dark", "animal": "World Burner", "rarity": "Divine", "color": "#fbff00"},
-    {"area": "Abandoned Manor", "animal": "Voidseer Pumpkin", "rarity": "Divine", "color": "#fbff00"},
-    {"area": "Cherry Blossom", "animal": "Oni Tiger", "rarity": "Eternal", "color": "#ff1ef0"},
-    {"area": "Cosmic", "animal": "Cave Dragon", "rarity": "Secret", "color": "#2e2e2e"},
-    {"area": "Prehistoric", "animal": "Mosasaurus", "rarity": "Eternal", "color": "#ff1ef0"},
-    {"area": "Heavenly Gate", "animal": "ArchAngel", "rarity": "Divine", "color": "#fbff00"},
-    {"area": "Mystic Shrine", "animal": "Kitsune", "rarity": "Divine", "color": "#fbff00"},
-    {"area": "Neon Cyber", "animal": "Cosmic Lion", "rarity": "Eternal", "color": "#ff1ef0"},
-    {"area": "Skull Island", "animal": "King Kong", "rarity": "Eternal", "color": "#ff1ef0"},
-    {"area": "Deep Trench", "animal": "Shark", "rarity": "Secret", "color": "#2e2e2e"},
-    {"area": "Starlight Peak", "animal": "Pegasus", "rarity": "Divine", "color": "#fbff00"}
+    {"area": "Skeletal Egg", "animal": "Skeletal Gigantus", "rarity": "Eternal", "color": "#ff1ef0"},
+    {"area": "Titan Temple", "animal": "Godzilla", "rarity": "Divine", "color": "#fbff00"},
+    {"area": "Lunar Temple", "animal": "Eternal Lunar Dragon", "rarity": "Eternal", "color": "#ff1ef0"},
+    {"area": "Cosmic Void", "animal": "Cave Dragon", "rarity": "Secret", "color": "#2e2e2e"},
+    {"area": "Frozen Tundra", "animal": "Ice Dragon", "rarity": "Eternal", "color": "#ff1ef0"}
 ]
 
 # Estado del ciclo en vivo (mediana observada: 300 segundos = 5 minutos)
@@ -279,7 +281,7 @@ def update_live_egg_targets():
     """Genera y sincroniza los objetivos de huevos en vivo vinculados con servidores reales de Roblox."""
     global current_live_targets
     servers = fetch_real_roblox_servers()
-    active_zones = ZONES_DATA[:8]
+    active_zones = ZONES_DATA[:10]
 
     new_targets = []
     server_idx = 0
@@ -287,6 +289,13 @@ def update_live_egg_targets():
     for z in active_zones:
         srv_list = []
         count = min(4, max(2, len(servers) // len(active_zones) if servers else 3))
+        
+        pet_meta = next((p for p in _pet_cache["data"] if p["name"].lower() == z["animal"].lower() or p.get("slug") == z["animal"].lower().replace(" ", "-")), None)
+        base_income = pet_meta.get("income_num", 1e9) if pet_meta else 1e9
+        growth_time = pet_meta.get("growth_time", "1h") if pet_meta else "1h"
+        req_speed = pet_meta.get("required_speed", "5k") if pet_meta else "5k"
+        egg_name = pet_meta.get("egg_name", f"{z['animal']} Egg") if pet_meta else f"{z['animal']} Egg"
+        pet_img = pet_meta.get("image_png", f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png") if pet_meta else f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png"
 
         for i in range(count):
             if servers:
@@ -300,14 +309,20 @@ def update_live_egg_targets():
                 playing = random.randint(3, 8)
                 max_p = 12
 
-            scale = round(random.uniform(1.5, 14.5), 2)
-            gen_num = int(random.uniform(20, 800) * 1e9)
+            scale = round(random.uniform(2.5, 15.5), 2)
+            gen_num = int(random.uniform(50, 950) * 1e9)
             possible_muts = ["Golden", "Rainbow", "Silver", "Monstrous"]
             muts = []
+            mut_mult = 1.0
             if random.random() > 0.4:
-                muts.append(random.choice(possible_muts))
-            if random.random() > 0.75:
-                muts.append(random.choice(possible_muts))
+                m = random.choice(possible_muts)
+                muts.append(m)
+                if m == "Rainbow": mut_mult = 3.5
+                elif m == "Golden": mut_mult = 2.5
+                elif m == "Silver": mut_mult = 1.2
+
+            total_income_per_sec = base_income * scale * mut_mult
+            money_formatted = format_currency_per_second(total_income_per_sec)
 
             age = random.randint(10, 75)
             now_ms = int(time.time() * 1000)
@@ -317,11 +332,12 @@ def update_live_egg_targets():
                 "jobid": job_id,
                 "scale": scale,
                 "gen": gen_num,
-                "speed": f"{round(random.uniform(3.0, 12.0), 1)}k/s",
-                "money": f"${round(random.uniform(100, 950), 1)}M",
+                "val_sec": total_income_per_sec,
+                "speed": f"{round(random.uniform(4.0, 15.0), 1)}k/s",
+                "money": money_formatted,
                 "mutations": list(set(muts)),
-                "parasite": random.random() < 0.15,
-                "claimed": random.random() < 0.2,
+                "parasite": random.random() < 0.12,
+                "claimed": random.random() < 0.18,
                 "join": f"https://www.roblox.com/games/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "deepLink": f"roblox://experiences/start?placeId={PLACE_ID}&gameInstanceId={job_id}",
                 "age_s": age,
@@ -331,13 +347,8 @@ def update_live_egg_targets():
                 "maxPlayers": max_p
             })
 
-        srv_list.sort(key=lambda s: s["scale"], reverse=True)
-        
-        pet_meta = next((p for p in _pet_cache["data"] if p["name"].lower() == z["animal"].lower() or p.get("slug") == z["animal"].lower().replace(" ", "-")), None)
-        growth_time = pet_meta.get("growth_time", "1h") if pet_meta else "1h"
-        req_speed = pet_meta.get("required_speed", "5k") if pet_meta else "5k"
-        egg_name = pet_meta.get("egg_name", f"{z['animal']} Egg") if pet_meta else f"{z['animal']} Egg"
-        pet_img = pet_meta.get("image_png", f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png") if pet_meta else f"/assets/pets/{z['animal'].lower().replace(' ', '-')}.png"
+        # Ordenar los servidores dentro de este huevo del mayor valor al menor
+        srv_list.sort(key=lambda s: s["val_sec"], reverse=True)
 
         new_targets.append({
             "key": f"{z['area']}|{z['animal']}",
@@ -345,14 +356,19 @@ def update_live_egg_targets():
             "animal": z["animal"],
             "rarity": z["rarity"],
             "color": z["color"],
+            "income": pet_meta.get("income", "$1B/s") if pet_meta else "$1B/s",
+            "income_num": base_income,
+            "best_value": srv_list[0]["val_sec"] if srv_list else base_income,
             "growth_time": growth_time,
             "required_speed": req_speed,
             "egg_name": egg_name,
             "image": pet_img,
-            "best_scale": srv_list[0]["scale"] if srv_list else 1.0,
+            "best_scale": max((s["scale"] for s in srv_list), default=1.0),
             "servers": srv_list
         })
 
+    # Sincronizar y ordenar los huevos del más valioso al menor
+    new_targets.sort(key=lambda t: t["best_value"], reverse=True)
     current_live_targets = new_targets
 
 # Inicializar los objetivos en vivo al arrancar
