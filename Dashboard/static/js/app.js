@@ -86,6 +86,7 @@
   let targets = [];
   let historyList = [];
   let resetIn = 300;
+  let targetResetTimestamp = null;
   let pollTimer = null;
   let clockOff = 0;
   let audioCtx = null;
@@ -1192,17 +1193,22 @@
     }
   }
 
-  // --- POLLING & TIMERS ---
+  // --- POLLING & TIMERS (SINCRONIZACIÓN ABSOLUTA EN TIEMPO REAL) ---
   function startPolling() {
     fetchLiveData();
     fetchHistoryData();
 
     if (pollTimer) clearInterval(pollTimer);
+    // Polling de servidores cada 3.5 segundos para no sobrecargar y mantener frescura
     pollTimer = setInterval(() => {
       fetchLiveData();
+    }, 3500);
+
+    // Reloj continuo de alta precisión cada 500ms (sin desincronización ni saltos)
+    setInterval(() => {
       updateClockDisplay();
       updateUfoDisplay();
-    }, 1000);
+    }, 500);
   }
 
   function fetchLiveData() {
@@ -1210,7 +1216,11 @@
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
-          resetIn = data.reset_in;
+          if (data.reset_in != null) {
+            resetIn = data.reset_in;
+            // Sincronización absoluta milisegundo a milisegundo contra Date.now()
+            targetResetTimestamp = Date.now() + (data.reset_in * 1000);
+          }
           const bn = document.getElementById("botsn");
           if (bn && data.bots != null) {
             bn.textContent = `${data.bots} bots buscando`;
@@ -1219,7 +1229,7 @@
           targets = data.targets || [];
           const newLen = targets.reduce((sum, t) => sum + t.servers.length, 0);
 
-          // If new servers appeared, sound alert!
+          // Si aparecen nuevos servidores, reproducir alerta sonora y notificación
           if (newLen > oldLen && oldLen > 0) {
             playAlert(alerts.sound);
             sendDesktopNotification("¡Nuevo Huevo Detectado!", "Un huevo ha aparecido en el radar de HuevosToons.");
@@ -1232,7 +1242,7 @@
         }
       })
       .catch(() => {
-        // Fallback local simulation if backend is not running
+        // Fallback local simulation si el backend no responde
         simulateLocalTick();
       });
   }
@@ -1262,18 +1272,40 @@
   function updateClockDisplay() {
     const cntEl = document.getElementById("cnt");
     const fillEl = document.getElementById("fill");
-    if (!cntEl) return;
+    const bigEl = document.getElementById("bigc");
+    if (!cntEl && !bigEl) return;
 
-    if (resetIn > 0) resetIn--;
-    cntEl.textContent = fmtTime(resetIn);
+    let remaining = resetIn;
+    if (targetResetTimestamp != null) {
+      const leftSec = (targetResetTimestamp - Date.now()) / 1000;
+      if (leftSec <= 0) {
+        remaining = 0;
+        targetResetTimestamp = Date.now() + (300 * 1000);
+      } else {
+        remaining = Math.round(leftSec);
+      }
+    } else if (resetIn > 0) {
+      resetIn--;
+      remaining = resetIn;
+    }
+
+    const t = fmtTime(remaining);
+    const isLast = remaining <= 30;
+
+    if (cntEl) {
+      cntEl.textContent = t;
+      cntEl.classList.toggle("last", isLast);
+    }
+    if (bigEl) {
+      bigEl.textContent = t;
+    }
 
     if (fillEl) {
       const total = 300;
-      const pct = Math.min(100, Math.max(0, ((total - resetIn) / total) * 100));
+      const pct = Math.min(100, Math.max(0, ((total - remaining) / total) * 100));
       fillEl.style.width = pct + "%";
-      fillEl.classList.toggle("last", resetIn <= 30);
+      fillEl.classList.toggle("last", isLast);
     }
-    cntEl.classList.toggle("last", resetIn <= 30);
   }
 
   function updateUfoDisplay() {

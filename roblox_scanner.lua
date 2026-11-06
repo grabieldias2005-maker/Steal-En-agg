@@ -133,17 +133,68 @@ local function scanEggs()
     return detectedEggs
 end
 
+-- Función para obtener el tiempo exacto del temporizador en el juego
+local function getInGameResetTime()
+    local lp = Players.LocalPlayer
+    
+    -- 1. Buscar en PlayerGui del jugador algún TextLabel visible con contador MM:SS
+    if lp and lp:FindFirstChild("PlayerGui") then
+        for _, gui in ipairs(lp.PlayerGui:GetDescendants()) do
+            if gui:IsA("TextLabel") and gui.Visible then
+                local text = gui.Text
+                if text and #text > 0 then
+                    local m, s = string.match(text, "(%d%d?):(%d%d)")
+                    if m and s then
+                        local minVal = tonumber(m)
+                        local secVal = tonumber(s)
+                        if minVal and secVal and minVal < 60 and secVal < 60 then
+                            local totalSec = (minVal * 60) + secVal
+                            if totalSec <= 300 then
+                                return totalSec
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 2. Buscar en Workspace por textos de cuenta regresiva de huevos
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") then
+            local text = obj.Text
+            if text and (string.find(string.lower(text), "reset") or string.find(string.lower(text), "egg")) then
+                local m, s = string.match(text, "(%d%d?):(%d%d)")
+                if m and s then
+                    local totalSec = (tonumber(m) * 60) + tonumber(s)
+                    if totalSec <= 300 then
+                        return totalSec
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 3. Fallback sincronizado matemáticamente con el epoch universal de Roblox
+    local now = os.time()
+    local resetIn = 300 - (now % 300)
+    return resetIn
+end
+
 -- Función para enviar el reporte HTTP a la web
 local function reportToServer()
     local eggs = scanEggs()
     local playerCount = #Players:GetPlayers()
     local maxPlayers = Players.MaxPlayers or 12
+    local inGameReset = getInGameResetTime()
     
     local payload = {
         jobId = game.JobId,
         placeId = game.PlaceId,
         players = playerCount,
         maxPlayers = maxPlayers,
+        reset_in = inGameReset,
+        game_time = os.time(),
         eggs = eggs
     }
     

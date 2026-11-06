@@ -147,3 +147,24 @@ def test_rarity_normalization():
     assert normalize_rarity("SECRET") == "Secret"
     assert normalize_rarity("ETERNAL") == "Eternal"
     assert normalize_rarity("") == "Pendiente de verificación"
+
+def test_time_synchronization_and_calibration(client):
+    """Verifica la sincronización del temporizador del juego con la API."""
+    from app import get_synced_game_clock
+    reset_in, period, now_ms = get_synced_game_clock()
+    assert 0 <= reset_in <= 300
+    assert period > 0
+    assert now_ms > 0
+
+    # Enviar un reporte con reset_in específico para verificar calibración
+    res = client.post("/api/report", json={
+        "jobId": "test-sync-job",
+        "reset_in": 142,
+        "eggs": [{"area": "Void", "animal": "Unicorn", "scale": 5.0}]
+    })
+    assert res.status_code == 200
+    
+    # Comprobar que /api/live refleja la calibración cercana a 142
+    live_res = client.get("/api/live")
+    live_data = live_res.get_json()
+    assert abs(live_data["reset_in"] - 142) <= 2

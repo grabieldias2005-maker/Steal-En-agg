@@ -10,8 +10,11 @@ import re
 import json
 import time
 import random
+import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
+
+logger = logging.getLogger("radar")
 
 import requests
 from bs4 import BeautifulSoup
@@ -74,9 +77,21 @@ ZONES_DATA = [
 ]
 
 # Estado del ciclo en vivo (mediana observada: 300 segundos = 5 minutos)
+# Sincronización matemática absoluta con el reloj universal de Roblox (os.time() % 300)
 CYCLE_DURATION_SEC = 300
-cycle_started_at = time.time()
-cycle_period = 160
+global_clock_offset = 0
+last_rotated_period = 0
+
+def get_synced_game_clock():
+    """
+    Retorna (reset_in, period, now_ms) sincronizados matemáticamente con
+    la época universal de Roblox (os.time() % 300) y el reloj interno del juego.
+    """
+    now = time.time() + global_clock_offset
+    elapsed_in_cycle = int(now) % CYCLE_DURATION_SEC
+    reset_in = CYCLE_DURATION_SEC - elapsed_in_cycle
+    period = int(now) // CYCLE_DURATION_SEC
+    return reset_in, period, int(now * 1000)
 
 # Objetivos e historial en memoria
 current_live_targets: List[Dict[str, Any]] = []
@@ -314,22 +329,18 @@ def serve_js(filename):
 @app.route("/_t/<path:sub>/live", methods=["GET"])
 def api_live(sub=None):
     """
-    Retorna el estado en vivo del radar:
-    - reset_in: contador regresivo oficial (300s)
+    Retorna el estado en vivo del radar sincronizado con el reloj del juego:
+    - reset_in: contador regresivo oficial (300s) sincronizado en UTC
     - targets: tarjetas de huevos y servidores reales de Roblox
     - bots: cantidad de servidores o bots buscando
     """
-    global cycle_period, cycle_started_at
+    global last_rotated_period
 
-    elapsed = int(time.time() - cycle_started_at)
-    reset_in = max(0, CYCLE_DURATION_SEC - elapsed)
+    reset_in, period, now_ms = get_synced_game_clock()
 
-    # Si el ciclo de 5 min terminó, rotar y renovar objetivos
-    if reset_in <= 0:
-        cycle_period += 1
-        cycle_started_at = time.time()
-        reset_in = CYCLE_DURATION_SEC
-
+    # Si entramos a un nuevo ciclo de 5 minutos, registrar en historial y actualizar objetivos
+    if period > last_rotated_period:
+        last_rotated_period = period
         if current_live_targets:
             top = current_live_targets[0]
             history_records.insert(0, {
@@ -337,7 +348,7 @@ def api_live(sub=None):
                 "n": top["animal"],
                 "r": top["rarity"],
                 "c": top["color"],
-                "ts": int(time.time() * 1000),
+                "ts": now_ms,
                 "b": top["best_scale"]
             })
             if len(history_records) > 30:
@@ -345,7 +356,7 @@ def api_live(sub=None):
 
         update_live_egg_targets()
     else:
-        # Incrementar edad de servidores
+        # Incrementar edad de servidores de forma gradual
         for t in current_live_targets:
             for s in t.get("servers", []):
                 s["age_s"] = s.get("age_s", 0) + 1
@@ -355,8 +366,8 @@ def api_live(sub=None):
 
     return jsonify({
         "ok": True,
-        "now": int(time.time() * 1000),
-        "period": cycle_period,
+        "now": now_ms,
+        "period": period,
         "reset_in": reset_in,
         "bots": bots_count,
         "targets": current_live_targets
@@ -393,14 +404,29 @@ def api_login(sub=None):
 def api_report_egg():
     """
     Recibe reportes de huevos detectados en servidores (desde Luau o bots de Discord)
-    y los agrega de inmediato al radar en vivo.
+    y los agrega de inmediato al radar en vivo. Sincroniza el temporizador si se reporta reset_in.
     """
+    global global_clock_offset
     payload = request.get_json(silent=True) or {}
     job_id = payload.get("jobId") or payload.get("jobid")
     eggs = payload.get("eggs", [])
 
     if not job_id or not isinstance(eggs, list) or not eggs:
         return jsonify({"ok": False, "error": "Datos inválidos (jobId y array eggs requeridos)"}), 400
+
+    # Sincronización dinámica de reloj con el juego Roblox en tiempo real
+    reported_reset = payload.get("reset_in") or payload.get("resetIn")
+    if reported_reset is not None:
+        try:
+            rep_sec = int(reported_reset)
+            if 0 <= rep_sec <= CYCLE_DURATION_SEC:
+                calc_reset, _, _ = get_synced_game_clock()
+                drift = calc_reset - rep_sec
+                if abs(drift) > 1:
+                    global_clock_offset += drift
+                    logger.info(f"[Sync] Reloj calibrado con telemetría del juego: drift={drift}s, offset={global_clock_offset}s")
+        except Exception as e:
+            logger.warning(f"[Sync] Error calibrando reloj: {e}")
 
     p_count = int(payload.get("players", 1))
     max_p = int(payload.get("maxPlayers", 12))
