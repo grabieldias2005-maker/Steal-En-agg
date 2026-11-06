@@ -6,7 +6,7 @@ from flask import Flask, jsonify, render_template_string, request
 
 app = Flask(__name__)
 PLACE_ID = "107778070777162"
-PET_VALUES_URL = "https://grindmath.app/steal-an-egg/values/"
+PET_VALUES_URL = "https://rblxguide.com/games/steal-an-egg/pets"
 _pet_cache = {"at": 0, "data": []}
 ROBLOX_SERVERS_URL = f"https://games.roblox.com/v1/games/{PLACE_ID}/servers/Public"
 
@@ -160,41 +160,37 @@ def public_servers():
 
 @app.get("/api/pets")
 def pet_values():
-    # Community-maintained table; cache for six hours to avoid hammering the source.
+    # Índice comunitario amplio; caché de seis horas.
     now = datetime.now(timezone.utc).timestamp()
     if _pet_cache["data"] and now - _pet_cache["at"] < 21600:
         return jsonify({"data": _pet_cache["data"], "updated_at": datetime.fromtimestamp(_pet_cache["at"], timezone.utc).isoformat(), "source": PET_VALUES_URL})
     try:
-        response = requests.get(PET_VALUES_URL, headers={"User-Agent": "Mozilla/5.0 StealAnEggRadar/1.0"}, timeout=20)
+        response = requests.get(PET_VALUES_URL, headers={"User-Agent": "Mozilla/5.0 StealAnEggRadar/1.0"}, timeout=25)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        records = []
-        for table in soup.find_all("table"):
-            headers = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
-            if not headers or not any("pet" in h for h in headers) or not any("income" in h for h in headers):
+        import re
+        records, seen = [], set()
+        rarities = "Common|Uncommon|Rare|Epic|Legendary|Mythic|Cosmic|Secret|Eternal|Divine|Brainrot|Monster|Event"
+        pattern = re.compile(r"^(.*?)\\s+(" + rarities + r")\\s+\\$([\\d,.]+)\\s*([KMB]?)/s\\s+(.+)$", re.I)
+        for link in soup.select('a[href*="/games/steal-an-egg/pets/"]'):
+            slug = link.get("href", "").rstrip("/").split("/")[-1]
+            if not slug or slug in seen or slug == "pets":
                 continue
-            for tr in table.find_all("tr"):
-                cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
-                if len(cells) < 4 or cells[0].lower() == "pet":
-                    continue
-                # Expected columns: pet, base income, rarity, biome/egg, weight.
-                import re
-                match = re.search(r"\$\s*([\d,.]+)\s*([KMB]?)\s*/s", cells[1], re.I)
-                if not match:
-                    continue
-                multiplier = {"": 1, "K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[match.group(2).upper()]
-                records.append({"name": cells[0], "income": float(match.group(1).replace(",", "")) * multiplier, "rarity": cells[2], "source": cells[3]})
-            if records:
-                break
+            match = pattern.match(link.get_text(" ", strip=True))
+            if not match:
+                continue
+            name, rarity, amount, suffix, source = match.groups()
+            factor = {"": 1, "K": 1000, "M": 1000000, "B": 1000000000}[suffix.upper()]
+            records.append({"name": name.strip(), "income": float(amount.replace(",", "")) * factor, "rarity": rarity.title(), "source": source.strip(), "egg": "Consulta la ficha", "slug": slug})
+            seen.add(slug)
         if not records:
-            raise ValueError("No se reconoció la tabla de ganancias de la fuente.")
+            raise ValueError("No se reconoció el índice de mascotas.")
         _pet_cache.update({"at": now, "data": records})
-        return jsonify({"data": records, "updated_at": datetime.fromtimestamp(now, timezone.utc).isoformat(), "source": PET_VALUES_URL})
+        return jsonify({"data": records, "count": len(records), "updated_at": datetime.fromtimestamp(now, timezone.utc).isoformat(), "source": PET_VALUES_URL})
     except (requests.RequestException, ValueError, IndexError):
         if _pet_cache["data"]:
             return jsonify({"data": _pet_cache["data"], "updated_at": datetime.fromtimestamp(_pet_cache["at"], timezone.utc).isoformat(), "source": PET_VALUES_URL, "stale": True})
-        return jsonify({"error": "La fuente comunitaria no respondió o cambió su formato. Consulta el enlace de GrindMath."}), 502
-
+        return jsonify({"error": "La fuente comunitaria no respondió o cambió su formato. Consulta el índice de RBLX Guide."}), 502
 @app.get("/api/spawn-evidence")
 def spawn_evidence():
     # Public community evidence ledger. This records observations, not live server telemetry.
